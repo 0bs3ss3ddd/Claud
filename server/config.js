@@ -1,0 +1,69 @@
+// Конфигурация из переменных окружения (см. .env.example).
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT = path.join(here, '..');
+
+function bool(v, def = false) {
+  if (v === undefined || v === '') return def;
+  return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
+}
+function int(v, def) {
+  const n = Number.parseInt(v ?? '', 10);
+  return Number.isFinite(n) ? n : def;
+}
+
+export function loadConfig(env = process.env) {
+  const production = env.NODE_ENV === 'production';
+  const publicUrl = (env.PUBLIC_URL || `http://localhost:${int(env.PORT, 3000)}`).replace(/\/+$/, '');
+  const yookassa = env.YOOKASSA_SHOP_ID && env.YOOKASSA_SECRET_KEY
+    ? {
+        shopId: env.YOOKASSA_SHOP_ID,
+        secretKey: env.YOOKASSA_SECRET_KEY,
+        sendReceipt: bool(env.YOOKASSA_SEND_RECEIPT),
+        vatCode: int(env.YOOKASSA_VAT_CODE, 1),
+        apiBase: env.YOOKASSA_API_BASE || 'https://api.yookassa.ru/v3',
+      }
+    : null;
+
+  return {
+    production,
+    port: int(env.PORT, 3000),
+    host: env.HOST || '0.0.0.0',
+    publicUrl,
+    secureCookies: bool(env.SECURE_COOKIES, publicUrl.startsWith('https://')),
+    trustProxy: env.TRUST_PROXY === undefined ? false : (/^\d+$/.test(env.TRUST_PROXY) ? int(env.TRUST_PROXY, 1) : bool(env.TRUST_PROXY)),
+    dbPath: env.DB_PATH || path.join(ROOT, 'data', 'parta.db'),
+    brand: env.BRAND_NAME || 'ПАРТА',
+    // Множитель лимитов частоты запросов (для нагрузочных тестов; в проде — 1)
+    rateLimitScale: Number(env.RATE_LIMIT_SCALE) > 0 ? Number(env.RATE_LIMIT_SCALE) : 1,
+
+    anthropic: {
+      apiKey: env.ANTHROPIC_API_KEY || '',
+      model: env.ANTHROPIC_MODEL || 'claude-opus-5',
+      effort: ['low', 'medium', 'high', 'xhigh', 'max'].includes(env.TUTOR_EFFORT) ? env.TUTOR_EFFORT : 'high',
+      maxTokens: int(env.TUTOR_MAX_TOKENS, 16000),
+      // Серверный фолбэк при отказе модели: на Bedrock/Vertex отключите (false).
+      fallbacks: bool(env.ANTHROPIC_FALLBACKS, true),
+    },
+
+    plan: {
+      priceRub: int(env.PRO_PRICE_RUB, 499),
+      periodDays: int(env.PRO_PERIOD_DAYS, 30),
+      proDailyLimit: int(env.PRO_DAILY_MESSAGES, 80),
+      trialMessages: int(env.TRIAL_MESSAGES, 6),
+    },
+
+    payments: {
+      yookassa,
+      // Демо-оплата без денег: по умолчанию только вне production.
+      demo: bool(env.PAYMENTS_DEMO, !production),
+    },
+
+    media: {
+      enabled: bool(env.MEDIA_FETCH, true),
+      userAgent: env.MEDIA_USER_AGENT || 'PartaTutor/1.0 (educational site; contact: admin@example.com)',
+    },
+  };
+}
