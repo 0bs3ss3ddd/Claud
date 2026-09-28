@@ -18,12 +18,14 @@ const MAX_TOTAL = 90000;
  * История диалога хранится у клиента, поэтому в модель попадают только
  * подписанные сервером реплики наставника — подделать «прошлый ответ» нельзя.
  */
-export function signTurn(secret, userId, scope, content) {
-  return createHmac('sha256', secret).update(`${userId}\n${scope}\n${content}`).digest('base64url');
+export function signTurn(secret, userId, scope, question, answer) {
+  return createHmac('sha256', secret)
+    .update(JSON.stringify([userId, scope, question, answer]))
+    .digest('base64url');
 }
-function verifyTurn(secret, userId, scope, content, sig) {
+function verifyTurn(secret, userId, scope, question, answer, sig) {
   if (typeof sig !== 'string' || sig.length > 64) return false;
-  const expected = Buffer.from(signTurn(secret, userId, scope, content));
+  const expected = Buffer.from(signTurn(secret, userId, scope, question, answer));
   const given = Buffer.from(sig);
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
@@ -116,8 +118,9 @@ async function streamText(send, text, isClosed) {
 
 export function createTutor({ config, content, access, log = console }) {
   const secret = config.secret;
+  const inflight = new Set(); // пользователи, у которых сейчас идёт ответ
   const ai = config.anthropic.apiKey
-    ? new Anthropic({ apiKey: config.anthropic.apiKey, maxRetries: 2, timeout: 10 * 60 * 1000 })
+    ? new Anthropic({ apiKey: config.anthropic.apiKey, baseURL: config.anthropic.baseURL, maxRetries: 2, timeout: 10 * 60 * 1000 })
     : null;
 
   function buildMessages(req) {
@@ -128,7 +131,7 @@ export function createTutor({ config, content, access, log = console }) {
         return {
           role: 'user',
           content: [
-            { type: 'text', text: context },
+            { type: 'text', text: context, cache_control: { type: 'ephemeral' } },
             { type: 'text', text: m.content },
           ],
         };
@@ -144,12 +147,13 @@ export function createTutor({ config, content, access, log = console }) {
     const verified = [];
     for (let i = 0; i + 1 < parsed.history.length; i += 2) {
       const [q, a] = [parsed.history[i], parsed.history[i + 1]];
-      if (httpReq.user && verifyTurn(secret, httpReq.user.id, parsed.scope, a.content, a.sig)) {
+      if (httpReq.user && verifyTurn(secret, httpReq.user.id, parsed.scope, q.content, a.content, a.sig)) {
         verified.push({ role: 'user', content: q.content }, { role: 'assistant', content: a.content });
       }
     }
     parsed.history = verified;
-    const sign = (text) => signTurn(secret, httpReq.user.id, parsed.scope, text);
+    const userText = actionText(parsed.action, parsed);
+    const sign = (text) => signTurn(secret, httpReq.user.id, parsed.scope, userText, text);
 
     const catalog = catalogAnswer(parsed);
     if (!catalog && !ai) {
@@ -161,11 +165,21 @@ export function createTutor({ config, content, access, log = console }) {
       return res.end();
     }
 
-    const grant = access.consume(httpReq.user, parsed.scope, { startTrial: parsed.startTrial });
+    const uid = httpReq.user?.id;
+    if (uid && inflight.has(uid)) {
+      return res.status(429).json({ error: reasonText('busy'), reason: 'busy' });
+    }
+    const grant = access.consume(httpReq.user, parsed.scope, { startTrial: parsed.startTrial, ip: httpReq.ip });
     if (!grant.ok) {
       return res.status(grant.status).json({ error: reasonText(grant.reason), reason: grant.reason, access: access.status(httpReq.user) });
     }
+    if (!catalog && grant.mode === 'trial' && !access.consumeTrialAiBudget()) {
+      access.refund(httpReq.user, grant.mode);
+      return res.status(503).json({ error: reasonText('trial_budget'), reason: 'trial_budget' });
+    }
 
+    inflight.add(uid);
+    res.on('close', () => inflight.delete(uid));
     const send = sse(res);
     let closed = false;
     res.on('close', () => { closed = true; });
@@ -173,6 +187,7 @@ export function createTutor({ config, content, access, log = console }) {
 
     if (catalog) {
       await streamText(send, catalog, () => closed);
+      inflight.delete(uid);
       if (!closed) { send('done', { sig: sign(catalog) }); res.end(); }
       return;
     }
@@ -203,25 +218,25 @@ export function createTutor({ config, content, access, log = console }) {
       });
       const final = await stream.finalMessage();
       if (final.stop_reason === 'refusal') {
-        access.refund(httpReq.user, grant.mode);
+        if (delivered === 0) access.refund(httpReq.user, grant.mode);
         if (!closed) send('refusal', { error: 'Наставник не может ответить на этот запрос. Переформулируй вопрос по учебной теме.' });
       } else if (!closed) {
         send('done', { truncated: final.stop_reason === 'max_tokens', sig: answer.length <= MAX_ASSISTANT_MSG ? sign(answer) : null });
       }
     } catch (err) {
-      if (closed) {
+      // Обрыв соединения клиентом попытку не возвращает: модель уже работала и тратила токены.
+      if (!closed) {
         if (delivered === 0) access.refund(httpReq.user, grant.mode);
-      } else {
-        access.refund(httpReq.user, grant.mode);
         log.error('[tutor] ошибка Claude API:', err?.status ?? '', err?.message ?? err);
         const busy = err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && Number(err.status) >= 500);
         send('error', {
           error: busy
-            ? 'Наставник сейчас перегружен. Попробуй через минуту — попытка не списана.'
-            : 'Не получилось получить ответ наставника. Попытка не списана, попробуй ещё раз.',
+            ? `Наставник сейчас перегружен. Попробуй через минуту${delivered === 0 ? ' — попытка не списана' : ''}.`
+            : `Не получилось получить ответ наставника${delivered === 0 ? ' — попытка не списана' : ''}. Попробуй ещё раз.`,
         });
       }
     } finally {
+      inflight.delete(uid);
       clearInterval(ping);
       if (!res.writableEnded) res.end();
     }
@@ -237,6 +252,9 @@ export function reasonText(reason) {
     case 'trial_used': return 'Бесплатный разбор этой недели уже использован для другой задачи';
     case 'trial_exhausted': return 'Сообщения бесплатного разбора закончились';
     case 'daily_limit': return 'Дневной лимит сообщений исчерпан, продолжим завтра';
+    case 'busy': return 'Дождись ответа на предыдущий вопрос';
+    case 'trial_ip_limit': return 'Из этой сети на этой неделе уже взяли много бесплатных разборов. Попробуй позже или подключи «Отличника»';
+    case 'trial_budget': return 'Бесплатные разборы с ИИ на сегодня закончились — загляни завтра или подключи «Отличника»';
     case 'bad_scope': return 'Некорректный запрос';
     default: return 'Доступ закрыт';
   }

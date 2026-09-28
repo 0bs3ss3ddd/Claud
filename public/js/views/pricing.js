@@ -93,7 +93,7 @@ export async function pricingView() {
           row('Стоимость', '0 ₽', `${priceRub} ₽ / ${periodDays} дней`),
         ),
       )),
-      h('p', { class: 'caption muted' }, '* Защита от злоупотреблений: не больше 80 сообщений наставнику в сутки.'),
+      h('p', { class: 'caption muted' }, `* Защита от злоупотреблений: не больше ${store.config.proDailyLimit ?? 40} сообщений наставнику в сутки.`),
     )),
     h('section', { class: 'band' }, h('div', { class: 'wrap faq' },
       h('h2', { class: 'display display--sm', style: { marginBottom: '24px' }, text: 'Про оплату' }),

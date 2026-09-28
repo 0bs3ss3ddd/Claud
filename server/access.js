@@ -27,7 +27,7 @@ export function isValidScope(scope) {
 }
 
 export function createAccess(db, config) {
-  const { trialMessages, proDailyLimit, periodDays } = config.plan;
+  const { trialMessages, proDailyLimit, periodDays, trialIpWeekly, trialAiDaily } = config.plan;
   const q = {
     trial: db.prepare('SELECT scope, messages_used FROM trials WHERE user_id = ? AND week_key = ?'),
     insertTrial: db.prepare('INSERT OR IGNORE INTO trials (user_id, week_key, scope, messages_used, created_at) VALUES (?, ?, ?, 0, ?)'),
@@ -36,6 +36,11 @@ export function createAccess(db, config) {
     useDaily: db.prepare(`INSERT INTO usage_daily (user_id, day, count) VALUES (?, ?, 1)
       ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1 WHERE count < ?`),
     proUntil: db.prepare('SELECT pro_until FROM users WHERE id = ?'),
+    ipTrials: db.prepare('SELECT count FROM trial_ips WHERE ip = ? AND week_key = ?'),
+    addIpTrial: db.prepare(`INSERT INTO trial_ips (ip, week_key, count) VALUES (?, ?, 1)
+      ON CONFLICT(ip, week_key) DO UPDATE SET count = count + 1`),
+    useGlobal: db.prepare(`INSERT INTO usage_global (day, count) VALUES (?, 1)
+      ON CONFLICT(day) DO UPDATE SET count = count + 1 WHERE count < ?`),
     extendPro: db.prepare('UPDATE users SET pro_until = ? WHERE id = ?'),
   };
 
@@ -64,7 +69,7 @@ export function createAccess(db, config) {
    * Проверяет и сразу списывает одно сообщение наставника (атомарно).
    * @returns {{ ok: true, mode: 'pro'|'trial' } | { ok: false, reason: string, status: number }}
    */
-  function consume(user, scope, { startTrial = false } = {}, now = Date.now()) {
+  function consume(user, scope, { startTrial = false, ip = null } = {}, now = Date.now()) {
     if (!user) return { ok: false, reason: 'auth', status: 401 };
     if (!isValidScope(scope)) return { ok: false, reason: 'bad_scope', status: 400 };
     const st = status(user, now);
@@ -78,6 +83,11 @@ export function createAccess(db, config) {
       let t = q.trial.get(user.id, weekKey);
       if (!t) {
         if (!startTrial) return { ok: false, reason: 'trial_available', status: 402 };
+        const ipKey = String(ip ?? 'unknown').slice(0, 64);
+        if (Number(q.ipTrials.get(ipKey, weekKey)?.count ?? 0) >= trialIpWeekly) {
+          return { ok: false, reason: 'trial_ip_limit', status: 429 };
+        }
+        q.addIpTrial.run(ipKey, weekKey);
         q.insertTrial.run(user.id, weekKey, scope, now);
         t = q.trial.get(user.id, weekKey);
       }
@@ -86,6 +96,11 @@ export function createAccess(db, config) {
       if (r.changes === 0) return { ok: false, reason: 'trial_exhausted', status: 402 };
       return { ok: true, mode: 'trial' };
     });
+  }
+
+  /** Общий дневной лимит ИИ-сообщений в бесплатных разборах (защита бюджета API). */
+  function consumeTrialAiBudget(now = Date.now()) {
+    return q.useGlobal.run(dayKey(now), trialAiDaily).changes > 0;
   }
 
   /** Возврат списанного сообщения, если наставник не смог ответить (ошибка API). */
@@ -104,5 +119,5 @@ export function createAccess(db, config) {
     return until;
   }
 
-  return { status, consume, refund, extendPro };
+  return { status, consume, refund, extendPro, consumeTrialAiBudget };
 }

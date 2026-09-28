@@ -74,7 +74,10 @@ export function renderGraph(d) {
     const pad = (y1 - y0) * 0.1;
     y0 -= pad; y1 += pad;
   }
-  if (x1 - x0 > 1e6 || y1 - y0 > 1e6) return errorBox('Слишком большой диапазон графика');
+  const LIM = 1e6;
+  if (![x0, x1, y0, y1].every((v) => Number.isFinite(v) && Math.abs(v) <= LIM) || x1 - x0 < 1e-6 || y1 - y0 < 1e-6) {
+    return errorBox('Недопустимый диапазон графика');
+  }
 
   const W = 640;
   const P = 34;
@@ -98,11 +101,11 @@ export function renderGraph(d) {
   const sy = d.equal ? sx : niceStep(y1 - y0, 6);
   const grid = s('g', { stroke: '#e9e9e9', 'stroke-width': 1 });
   const labels = s('g', { 'font-size': 11, 'font-family': 'Onest, sans-serif', fill: '#000' });
-  for (let x = Math.ceil(x0 / sx) * sx; x <= x1 + 1e-9; x += sx) {
+  for (let k = 0, x = Math.ceil(x0 / sx) * sx; x <= x1 + 1e-9 && k < 60; k++, x = Math.ceil(x0 / sx) * sx + k * sx) {
     if (showGrid) grid.append(s('line', { x1: X(x), x2: X(x), y1: P, y2: H - P }));
     if (showAxes && Math.abs(x) > sx / 1000) labels.append(s('text', { x: X(x), y: Math.min(H - P - 4, Math.max(P + 12, Y(0) + 14)), 'text-anchor': 'middle' }, fmt(x)));
   }
-  for (let y = Math.ceil(y0 / sy) * sy; y <= y1 + 1e-9; y += sy) {
+  for (let k = 0, y = Math.ceil(y0 / sy) * sy; y <= y1 + 1e-9 && k < 60; k++, y = Math.ceil(y0 / sy) * sy + k * sy) {
     if (showGrid) grid.append(s('line', { y1: Y(y), y2: Y(y), x1: P, x2: W - P }));
     if (showAxes && Math.abs(y) > sy / 1000) labels.append(s('text', { x: Math.min(W - P - 4, Math.max(P + 4, X(0) - 6)), y: Y(y) + 4, 'text-anchor': X(0) - 6 < P + 20 ? 'start' : 'end' }, fmt(y)));
   }
@@ -298,12 +301,14 @@ export function renderImage(d) {
 }
 
 /** Заменяет плейсхолдеры [data-viz] в контейнере на готовые визуализации. */
+const MAX_VIZ = 8;
 export function hydrateViz(root, viz) {
-  root.querySelectorAll('[data-viz]').forEach((el) => {
+  root.querySelectorAll('[data-viz]').forEach((el, i) => {
     const item = viz[Number(el.dataset.viz)];
     if (!item) return;
     let node;
-    if (item.pending) node = h('div', { class: 'viz viz--pending', text: item.type === 'map' ? 'Рисую карту…' : item.type === 'image' ? 'Ищу иллюстрацию…' : 'Рисую чертёж…' });
+    if (i >= MAX_VIZ) node = errorBox('Слишком много иллюстраций в одном ответе');
+    else if (item.pending) node = h('div', { class: 'viz viz--pending', text: item.type === 'map' ? 'Рисую карту…' : item.type === 'image' ? 'Ищу иллюстрацию…' : 'Рисую чертёж…' });
     else if (item.error) node = errorBox(item.error);
     else if (item.type === 'graph') node = renderGraph(item.data);
     else if (item.type === 'chart') node = renderChart(item.data);

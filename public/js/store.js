@@ -4,7 +4,7 @@ import { api } from './api.js';
 const listeners = new Set();
 
 export const store = {
-  config: { brand: 'ПАРТА', priceRub: 499, periodDays: 30, trialMessages: 6, aiEnabled: false, payments: 'demo' },
+  config: { brand: 'ПАРТА', priceRub: 499, periodDays: 30, trialMessages: 6, proDailyLimit: 40, aiEnabled: false, payments: 'demo' },
   user: null,
   access: { plan: 'guest' },
   subjects: null,

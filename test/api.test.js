@@ -166,10 +166,12 @@ test('ответы наставника подписываются, поддел
   const text = events.filter((e) => e.event === 'delta').map((e) => e.data.t).join('');
   const done = events.at(-1);
   assert.equal(done.event, 'done');
-  assert.equal(done.data.sig, signTurn(srv.config.secret, me.id, 'task:math:e8', text));
-  // Подпись привязана к пользователю и задаче
-  assert.notEqual(done.data.sig, signTurn(srv.config.secret, me.id + 1, 'task:math:e8', text));
-  assert.notEqual(done.data.sig, signTurn(srv.config.secret, me.id, 'task:math:e4', text));
+  const q = 'Дай подсказку №1 к этой задаче. Только следующий шаг, без ответа.';
+  assert.equal(done.data.sig, signTurn(srv.config.secret, me.id, 'task:math:e8', q, text));
+  // Подпись привязана к пользователю, задаче и вопросу
+  assert.notEqual(done.data.sig, signTurn(srv.config.secret, me.id + 1, 'task:math:e8', q, text));
+  assert.notEqual(done.data.sig, signTurn(srv.config.secret, me.id, 'task:math:e4', q, text));
+  assert.notEqual(done.data.sig, signTurn(srv.config.secret, me.id, 'task:math:e8', 'другой вопрос', text));
   // Запрос с подписанной и с поддельной историей проходит (поддельная пара просто не попадёт в модель)
   const history = [
     { role: 'user', content: 'Дай подсказку №1 к этой задаче. Только следующий шаг, без ответа.' },

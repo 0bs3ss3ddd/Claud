@@ -42,6 +42,20 @@ CREATE TABLE IF NOT EXISTS usage_daily (
   PRIMARY KEY (user_id, day)
 );
 
+-- Сколько пробных попыток открыто из одной сети за неделю (защита от фарма аккаунтов)
+CREATE TABLE IF NOT EXISTS trial_ips (
+  ip       TEXT NOT NULL,
+  week_key TEXT NOT NULL,
+  count    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (ip, week_key)
+);
+
+-- Общий дневной бюджет ИИ-сообщений в бесплатных разборах
+CREATE TABLE IF NOT EXISTS usage_global (
+  day   TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id            TEXT PRIMARY KEY,
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

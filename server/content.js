@@ -158,3 +158,19 @@ export function createContentStore(subjects) {
     },
   };
 }
+
+/** Все иллюстрации (:::image) из учебного контента — для открытого доступа к картинкам. */
+export function collectImageTitles(subjects) {
+  const titles = new Set();
+  const scan = (md) => {
+    if (typeof md !== 'string') return;
+    for (const v of renderMarkdown(md).viz) if (v.type === 'image' && typeof v.data?.wiki === 'string') titles.add(v.data.wiki.trim());
+  };
+  for (const s of subjects) {
+    for (const t of s.theory ?? []) scan(t.body);
+    for (const t of s.tasks ?? []) { scan(t.statement); scan(t.short); scan(t.full); (t.hints ?? []).forEach(scan); }
+    scan(s.olymp?.intro);
+    scan(s.olymp?.vsosh);
+  }
+  return titles;
+}

@@ -45,6 +45,7 @@ export function loadConfig(env = process.env) {
 
     anthropic: {
       apiKey: env.ANTHROPIC_API_KEY || '',
+      baseURL: env.ANTHROPIC_BASE_URL || undefined,
       model: env.ANTHROPIC_MODEL || 'claude-opus-5',
       effort: ['low', 'medium', 'high', 'xhigh', 'max'].includes(env.TUTOR_EFFORT) ? env.TUTOR_EFFORT : 'high',
       maxTokens: int(env.TUTOR_MAX_TOKENS, 16000),
@@ -55,14 +56,18 @@ export function loadConfig(env = process.env) {
     plan: {
       priceRub: int(env.PRO_PRICE_RUB, 499),
       periodDays: int(env.PRO_PERIOD_DAYS, 30),
-      proDailyLimit: int(env.PRO_DAILY_MESSAGES, 80),
+      proDailyLimit: int(env.PRO_DAILY_MESSAGES, 40),
       trialMessages: int(env.TRIAL_MESSAGES, 6),
+      // Бесплатных разборов из одной сети (IP) в неделю — школьные сети делят один IP
+      trialIpWeekly: int(env.TRIAL_PER_IP_WEEKLY, 15),
+      // ИИ-сообщений во всех бесплатных разборах за сутки (бюджет API)
+      trialAiDaily: int(env.TRIAL_AI_DAILY_LIMIT, 300),
     },
 
     payments: {
       yookassa,
       // Демо-оплата без денег: по умолчанию только вне production.
-      demo: bool(env.PAYMENTS_DEMO, !production),
+      demo: bool(env.PAYMENTS_DEMO, !production && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(publicUrl)),
     },
 
     media: {

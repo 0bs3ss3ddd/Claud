@@ -65,6 +65,7 @@ export function limiters(scale = 1) {
   return {
     api: rateLimit({ ...base, windowMs: 15 * 60 * 1000, limit: n(600), handler: json429('Слишком много запросов, подожди немного') }),
     auth: rateLimit({ ...base, windowMs: 15 * 60 * 1000, limit: n(20), handler: json429('Слишком много попыток входа. Попробуй через 15 минут') }),
+    register: rateLimit({ ...base, windowMs: 24 * 60 * 60 * 1000, limit: n(30), handler: json429('Слишком много регистраций из этой сети за сутки. Попробуй завтра') }),
     tutor: rateLimit({ ...base, windowMs: 60 * 1000, limit: n(12), handler: json429('Не так быстро — наставник ещё думает над прошлым вопросом') }),
     payments: rateLimit({ ...base, windowMs: 15 * 60 * 1000, limit: n(30), handler: json429('Слишком много запросов к оплате') }),
     media: rateLimit({ ...base, windowMs: 60 * 1000, limit: n(60), handler: json429('Слишком много запросов картинок') }),

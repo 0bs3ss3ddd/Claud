@@ -6,7 +6,7 @@ import { ROOT } from './config.js';
 import { openDb } from './db.js';
 import { createAuth, requireUser } from './auth.js';
 import { createAccess } from './access.js';
-import { loadSubjects, createContentStore } from './content.js';
+import { loadSubjects, createContentStore, collectImageTitles } from './content.js';
 import { createTutor } from './tutor.js';
 import { createPayments } from './payments.js';
 import { createMedia } from './media.js';
@@ -24,13 +24,23 @@ export async function createApp(config, { fetchImpl = fetch, log = console, db: 
   const access = createAccess(db, config);
   const tutor = createTutor({ config, content, access, log });
   const payments = createPayments({ db, config, access, fetchImpl, log });
-  const media = createMedia({ db, config, fetchImpl });
+  const media = createMedia({ db, config, fetchImpl, publicTitles: collectImageTitles(subjects) });
   const limit = limiters(config.rateLimitScale);
 
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
   app.use(securityHeaders(config));
+  if (!config.trustProxy) {
+    let warned = false;
+    app.use((req, _res, next) => {
+      if (!warned && req.headers['x-forwarded-for']) {
+        warned = true;
+        log.warn('[warn] пришёл X-Forwarded-For, но TRUST_PROXY не задан: лимиты считаются по IP прокси. Укажите TRUST_PROXY=1, если сайт за прокси.');
+      }
+      next();
+    });
+  }
   app.use(permissionsPolicy);
 
   // ---------- API ----------
@@ -49,6 +59,7 @@ export async function createApp(config, { fetchImpl = fetch, log = console, db: 
       priceRub: config.plan.priceRub,
       periodDays: config.plan.periodDays,
       trialMessages: config.plan.trialMessages,
+      proDailyLimit: config.plan.proDailyLimit,
       aiEnabled: tutor.aiEnabled,
       payments: payments.mode,
     });
@@ -59,7 +70,7 @@ export async function createApp(config, { fetchImpl = fetch, log = console, db: 
     res.json({ user, access: access.status(req.user) });
   });
 
-  api.post('/auth/register', limit.auth, auth.register);
+  api.post('/auth/register', limit.auth, limit.register, auth.register);
   api.post('/auth/login', limit.auth, auth.login);
   api.post('/auth/logout', auth.logout);
   api.post('/auth/logout-others', auth.logoutOthers);

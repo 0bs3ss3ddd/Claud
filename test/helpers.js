@@ -4,7 +4,7 @@ import { createApp } from '../server/app.js';
 export const silentLog = { error() {}, warn() {}, log() {} };
 
 export async function startServer(env = {}, { fetchImpl } = {}) {
-  const config = loadConfig({ NODE_ENV: 'test', DB_PATH: ':memory:', PUBLIC_URL: 'http://127.0.0.1', MEDIA_FETCH: 'false', RATE_LIMIT_SCALE: '50', ...env });
+  const config = loadConfig({ NODE_ENV: 'test', DB_PATH: ':memory:', PUBLIC_URL: 'http://127.0.0.1', MEDIA_FETCH: 'false', RATE_LIMIT_SCALE: '50', TRIAL_PER_IP_WEEKLY: '1000', ...env });
   const ctx = await createApp(config, { fetchImpl, log: silentLog });
   const server = await new Promise((resolve) => {
     const s = ctx.app.listen(0, '127.0.0.1', () => resolve(s));

@@ -31,6 +31,12 @@ test('markdown экранирует HTML и опасные ссылки', () => 
     assert.ok(!/"onmouseover=/.test(html), `атрибут не должен закрываться: ${html}`);
   }
   assert.equal(escapeHtml(`<a href="x">'`), '&lt;a href=&quot;x&quot;&gt;&#39;');
+  // Токены формул и обратный слэш не должны попадать в href (аудит: латентный XSS и «внутренняя» внешняя ссылка)
+  for (const src of ['[click me](/x$a$y)', '[pay](/\\evil.example/pay)', '[c](/x`code`y)']) {
+    const { html } = renderMarkdown(src, { katex });
+    assert.ok(!/<a\s/.test(html), `ссылка не должна создаваться: ${src} → ${html}`);
+  }
+  assert.match(renderMarkdown('[ok](/subject/math)').html, /<a href="\/subject\/math" data-link>ok<\/a>/);
 });
 
 test('markdown: формулы, таблицы, списки, директивы', () => {

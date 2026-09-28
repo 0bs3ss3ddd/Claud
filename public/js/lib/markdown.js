@@ -115,7 +115,7 @@ function inline(s) {
   return s
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g, (_, label, url) => {
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?![\/\\]))[^\s()\\-]+)\)/g, (_, label, url) => {
       const external = /^https?:/.test(url);
       return external
         ? `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow">${label}</a>`
