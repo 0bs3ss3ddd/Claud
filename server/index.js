@@ -7,6 +7,10 @@ if (config.production && config.payments.demo) {
   console.warn('[warn] PAYMENTS_DEMO включён в production — тариф можно получить без оплаты!');
 }
 
+if (config.production && !config.secretFromEnv) {
+  console.warn('[warn] APP_SECRET не задан (нужно ≥ 32 символов): после перезапуска история диалогов с наставником начнётся заново.');
+}
+
 const { app, tutor, payments } = await createApp(config);
 
 app.listen(config.port, config.host, () => {

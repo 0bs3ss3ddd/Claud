@@ -2,14 +2,31 @@
 //  • Подсказки и полные решения задач каталога — проверенные методистами тексты (мгновенно, без ИИ).
 //  • Вопросы по задаче и «Решатель» (любая задача) — Claude API с эталоном задачи в контексте.
 //  • Без ANTHROPIC_API_KEY работает демо-режим: каталог доступен, свободный диалог — нет.
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { TUTOR_SYSTEM_PROMPT, buildContext, actionText } from './prompts.js';
 import { isValidScope } from './access.js';
 
 const MAX_HISTORY = 16;
-const MAX_MSG = 8000;
+const MAX_USER_MSG = 8000;
+const MAX_ASSISTANT_MSG = 24000;
 const MAX_QUESTION = 4000;
-const MAX_TOTAL = 60000;
+const MAX_TOTAL = 90000;
+
+/**
+ * Ответы наставника подписываются HMAC (пользователь + scope + текст).
+ * История диалога хранится у клиента, поэтому в модель попадают только
+ * подписанные сервером реплики наставника — подделать «прошлый ответ» нельзя.
+ */
+export function signTurn(secret, userId, scope, content) {
+  return createHmac('sha256', secret).update(`${userId}\n${scope}\n${content}`).digest('base64url');
+}
+function verifyTurn(secret, userId, scope, content, sig) {
+  if (typeof sig !== 'string' || sig.length > 64) return false;
+  const expected = Buffer.from(signTurn(secret, userId, scope, content));
+  const given = Buffer.from(sig);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
 const ACTIONS = new Set(['hint', 'solution', 'chat']);
 
 export function validateTutorRequest(body, content) {
@@ -50,7 +67,8 @@ export function validateTutorRequest(body, content) {
   for (let i = 0; i < history.length; i++) {
     const m = history[i];
     const expected = i % 2 === 0 ? 'user' : 'assistant';
-    if (!m || m.role !== expected || typeof m.content !== 'string' || !m.content.trim() || m.content.length > MAX_MSG) {
+    const max = expected === 'user' ? MAX_USER_MSG : MAX_ASSISTANT_MSG;
+    if (!m || m.role !== expected || typeof m.content !== 'string' || !m.content.trim() || m.content.length > max) {
       return { error: 'Некорректная история диалога' };
     }
     total += m.content.length;
@@ -97,6 +115,7 @@ async function streamText(send, text, isClosed) {
 }
 
 export function createTutor({ config, content, access, log = console }) {
+  const secret = config.secret;
   const ai = config.anthropic.apiKey
     ? new Anthropic({ apiKey: config.anthropic.apiKey, maxRetries: 2, timeout: 10 * 60 * 1000 })
     : null;
@@ -121,6 +140,16 @@ export function createTutor({ config, content, access, log = console }) {
   async function handle(httpReq, res) {
     const parsed = validateTutorRequest(httpReq.body, content);
     if (parsed.error) return res.status(parsed.status ?? 400).json({ error: parsed.error });
+    // Оставляем только пары «вопрос — подписанный ответ наставника»
+    const verified = [];
+    for (let i = 0; i + 1 < parsed.history.length; i += 2) {
+      const [q, a] = [parsed.history[i], parsed.history[i + 1]];
+      if (httpReq.user && verifyTurn(secret, httpReq.user.id, parsed.scope, a.content, a.sig)) {
+        verified.push({ role: 'user', content: q.content }, { role: 'assistant', content: a.content });
+      }
+    }
+    parsed.history = verified;
+    const sign = (text) => signTurn(secret, httpReq.user.id, parsed.scope, text);
 
     const catalog = catalogAnswer(parsed);
     if (!catalog && !ai) {
@@ -144,12 +173,13 @@ export function createTutor({ config, content, access, log = console }) {
 
     if (catalog) {
       await streamText(send, catalog, () => closed);
-      if (!closed) { send('done', {}); res.end(); }
+      if (!closed) { send('done', { sig: sign(catalog) }); res.end(); }
       return;
     }
 
     const ping = setInterval(() => { if (!closed) res.write(': ping\n\n'); }, 15000);
     let delivered = 0;
+    let answer = '';
     let stream;
     try {
       const params = {
@@ -168,6 +198,7 @@ export function createTutor({ config, content, access, log = console }) {
       res.on('close', () => { if (!res.writableFinished) stream.abort(); });
       stream.on('text', (delta) => {
         delivered += delta.length;
+        answer += delta;
         if (!closed) send('delta', { t: delta });
       });
       const final = await stream.finalMessage();
@@ -175,7 +206,7 @@ export function createTutor({ config, content, access, log = console }) {
         access.refund(httpReq.user, grant.mode);
         if (!closed) send('refusal', { error: 'Наставник не может ответить на этот запрос. Переформулируй вопрос по учебной теме.' });
       } else if (!closed) {
-        send('done', { truncated: final.stop_reason === 'max_tokens' });
+        send('done', { truncated: final.stop_reason === 'max_tokens', sig: answer.length <= MAX_ASSISTANT_MSG ? sign(answer) : null });
       }
     } catch (err) {
       if (closed) {

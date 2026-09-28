@@ -43,7 +43,7 @@ export function client(base) {
 export async function registered(base, name = 'Тест') {
   const c = client(base);
   const email = `u${Math.random().toString(36).slice(2)}@example.com`;
-  const r = await c.post('/api/auth/register', { email, password: 'password123', name });
+  const r = await c.post('/api/auth/register', { email, password: 'Kvadrat-2026!', name });
   if (r.status !== 201) throw new Error('register failed: ' + JSON.stringify(r.data));
   return c;
 }

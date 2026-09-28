@@ -1,5 +1,6 @@
 // Конфигурация из переменных окружения (см. .env.example).
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,9 @@ export function loadConfig(env = process.env) {
     trustProxy: env.TRUST_PROXY === undefined ? false : (/^\d+$/.test(env.TRUST_PROXY) ? int(env.TRUST_PROXY, 1) : bool(env.TRUST_PROXY)),
     dbPath: env.DB_PATH || path.join(ROOT, 'data', 'parta.db'),
     brand: env.BRAND_NAME || 'ПАРТА',
+    // Ключ подписи ответов наставника (HMAC). Без APP_SECRET — случайный на процесс.
+    secret: env.APP_SECRET && env.APP_SECRET.length >= 32 ? env.APP_SECRET : randomBytes(32).toString('hex'),
+    secretFromEnv: Boolean(env.APP_SECRET && env.APP_SECRET.length >= 32),
     // Множитель лимитов частоты запросов (для нагрузочных тестов; в проде — 1)
     rateLimitScale: Number(env.RATE_LIMIT_SCALE) > 0 ? Number(env.RATE_LIMIT_SCALE) : 1,
 

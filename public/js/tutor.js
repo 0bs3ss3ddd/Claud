@@ -6,8 +6,9 @@ import { md, setMd } from './render.js';
 import { openAuth, confirmTrial, paywall, toast } from './ui.js';
 
 const MAX_HISTORY = 16;
-const MAX_MSG = 7900;
-const MAX_TOTAL = 56000;
+const MAX_USER_MSG = 8000;
+const MAX_ASSISTANT_MSG = 24000;
+const MAX_TOTAL = 88000;
 const session = storage('session');
 
 const USER_TEXT = {
@@ -52,14 +53,17 @@ export function createTutorSession(opts) {
     for (const m of log) logEl.append(renderMessage(m));
   }
 
+  // В историю идут только пары «вопрос — ответ наставника» с подписью сервера.
   function history() {
     const turns = [];
     for (let i = 0; i < log.length; i++) {
       const m = log[i];
       const next = log[i + 1];
       if (m.role === 'user' && next?.role === 'assistant') {
-        turns.push({ role: 'user', content: m.content.slice(0, MAX_MSG) });
-        turns.push({ role: 'assistant', content: next.content.length > MAX_MSG ? next.content.slice(0, MAX_MSG) + '…' : next.content });
+        if (next.sig && m.content.length <= MAX_USER_MSG && next.content.length <= MAX_ASSISTANT_MSG) {
+          turns.push({ role: 'user', content: m.content });
+          turns.push({ role: 'assistant', content: next.content, sig: next.sig });
+        }
         i++;
       }
     }
@@ -106,6 +110,7 @@ export function createTutorSession(opts) {
     let frame = 0;
     let failed = null;
     let demo = false;
+    let sig = null;
     const paint = () => { frame = 0; setMd(out, text, { final: false }); };
     controller = new AbortController();
     try {
@@ -113,7 +118,7 @@ export function createTutorSession(opts) {
         signal: controller.signal,
         onMeta: (meta) => { setAccess(meta.access); demo = meta.mode === 'demo'; },
         onDelta: (t) => { text += t; if (!frame) frame = requestAnimationFrame(paint); },
-        onDone: () => {},
+        onDone: (data) => { sig = typeof data?.sig === 'string' ? data.sig : null; },
         onError: (message) => { failed = message; },
       });
     } catch (err) {
@@ -150,7 +155,7 @@ export function createTutorSession(opts) {
       if (demo) {
         log.push(userMsg, { role: 'note', content: text });
       } else {
-        log.push(userMsg, { role: 'assistant', content: text });
+        log.push(userMsg, { role: 'assistant', content: text, sig });
       }
       save();
     }

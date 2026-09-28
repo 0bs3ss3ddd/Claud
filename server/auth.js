@@ -9,6 +9,14 @@ const KEYLEN = 64;
 export const SESSION_COOKIE = 'parta_sid';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
+// Самые частые пароли из утечек (и их «школьные» варианты) — запрещены при регистрации.
+const COMMON_PASSWORDS = new Set([
+  '12345678', '123456789', '1234567890', '11111111', '00000000', '87654321', '12341234', '11223344',
+  'password', 'password1', 'password123', 'passw0rd', 'qwertyui', 'qwerty123', 'qwerty12', 'qwertyuiop',
+  '1q2w3e4r', '1q2w3e4r5t', 'zaq12wsx', 'asdfghjk', 'iloveyou', 'sunshine', 'princess', 'football',
+  'abcd1234', 'abc12345', 'aa123456', 'q1w2e3r4', 'letmein1', 'welcome1', 'admin123', 'dragon12',
+  'йцукенгш', 'пароль123', 'пароль12', 'qwerty2024', 'qwerty2025', 'qwerty2026', 'ege2026ege', 'parta123',
+]);
 
 export async function hashPassword(password) {
   const salt = randomBytes(16);
@@ -61,6 +69,10 @@ export function validateCredentials({ email, password, name }, { register = fals
   if (typeof password !== 'string' || password.length < 8) return 'Пароль — минимум 8 символов';
   if (password.length > 128) return 'Пароль слишком длинный';
   if (register) {
+    const lower = password.toLowerCase();
+    if (COMMON_PASSWORDS.has(lower) || /^(.)\1+$/.test(password) || lower === e || lower === e.split('@')[0]) {
+      return 'Этот пароль слишком простой — придумай другой';
+    }
     const n = String(name ?? '').trim();
     if (n.length < 1 || n.length > 60) return 'Имя — от 1 до 60 символов';
     if (/[\u0000-\u001f<>]/.test(n)) return 'Имя содержит недопустимые символы';
