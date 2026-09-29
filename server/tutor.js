@@ -1,11 +1,13 @@
 // Наставник: подсказки, полные разборы и диалог. Ответ — поток Server-Sent Events.
 //  • Подсказки и полные решения задач каталога — проверенные методистами тексты (мгновенно, без ИИ).
-//  • Вопросы по задаче и «Решатель» (любая задача) — Claude API с эталоном задачи в контексте.
-//  • Без ANTHROPIC_API_KEY работает демо-режим: каталог доступен, свободный диалог — нет.
+//  • Вопросы по задаче и «Решатель» (любая задача) — ИИ (Claude, YandexGPT, GigaChat или DeepSeek)
+//    с эталоном задачи в контексте; при сбое основного провайдера — следующий из TUTOR_PROVIDERS.
+//  • Без ключей ИИ работает демо-режим: каталог доступен, свободный диалог — нет.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import { TUTOR_SYSTEM_PROMPT, buildContext, actionText } from './prompts.js';
 import { isValidScope } from './access.js';
+import { createProviders, PROVIDER_INFO } from './llm/index.js';
+import { ProviderError, trimTurns } from './llm/common.js';
 
 const MAX_HISTORY = 16;
 const MAX_USER_MSG = 8000;
@@ -92,7 +94,7 @@ function catalogAnswer(req) {
   return null;
 }
 
-const DEMO_NOTE = `Сейчас наставник работает в **демо-режиме**: подсказки и полные разборы задач из каталога доступны, а свободный диалог с ИИ включится, когда администратор сайта подключит ключ Claude API (переменная ANTHROPIC_API_KEY).
+const DEMO_NOTE = `Сейчас наставник работает в **демо-режиме**: подсказки и полные разборы задач из каталога доступны, а свободный диалог с ИИ включится, когда администратор сайта подключит ключ одного из ИИ-провайдеров (Claude, YandexGPT, GigaChat или DeepSeek).
 
 Пока можно открыть полное решение этой задачи или взять другую задачу из каталога.`;
 
@@ -116,28 +118,36 @@ async function streamText(send, text, isClosed) {
   }
 }
 
-export function createTutor({ config, content, access, log = console }) {
+export function createTutor({ config, content, access, fetchImpl = fetch, log = console }) {
   const secret = config.secret;
   const inflight = new Set(); // пользователи, у которых сейчас идёт ответ
-  const ai = config.anthropic.apiKey
-    ? new Anthropic({ apiKey: config.anthropic.apiKey, baseURL: config.anthropic.baseURL, maxRetries: 2, timeout: 10 * 60 * 1000 })
-    : null;
+  const providers = createProviders(config, { fetchImpl, log });
 
-  function buildMessages(req) {
-    const context = buildContext({ subject: req.subject, task: req.task, mode: req.mode });
-    const turns = [...req.history, { role: 'user', content: actionText(req.action, req) }];
-    return turns.map((m, i) => {
-      if (i === 0) {
-        return {
-          role: 'user',
-          content: [
-            { type: 'text', text: context, cache_control: { type: 'ephemeral' } },
-            { type: 'text', text: m.content },
-          ],
-        };
+  /** Спрашивает провайдеров по очереди; к следующему переходим, только если ответ ещё не начался. */
+  async function askAi({ parsed, signal, onText }) {
+    const context = buildContext({ subject: parsed.subject, task: parsed.task, mode: parsed.mode });
+    const allTurns = [...parsed.history, { role: 'user', content: actionText(parsed.action, parsed) }];
+    let started = false;
+    let lastError = null;
+    for (const provider of providers) {
+      const turns = trimTurns(allTurns, TUTOR_SYSTEM_PROMPT.length + context.length, provider.maxContextChars);
+      try {
+        const result = await provider.stream({
+          system: TUTOR_SYSTEM_PROMPT,
+          context,
+          turns,
+          action: parsed.action,
+          signal,
+          onText: (t) => { started = true; onText(t); },
+        });
+        return { ...result, provider: provider.id };
+      } catch (err) {
+        if (err?.name === 'AbortError' || started) throw err;
+        lastError = err;
+        log.error(`[tutor] ${provider.id} не ответил: ${err?.message ?? err}`);
       }
-      return { role: m.role, content: m.content };
-    });
+    }
+    throw lastError ?? new ProviderError('нет доступных ИИ-провайдеров');
   }
 
   async function handle(httpReq, res) {
@@ -156,7 +166,7 @@ export function createTutor({ config, content, access, log = console }) {
     const sign = (text) => signTurn(secret, httpReq.user.id, parsed.scope, userText, text);
 
     const catalog = catalogAnswer(parsed);
-    if (!catalog && !ai) {
+    if (!catalog && !providers.length) {
       // Без ИИ свободный диалог недоступен — попытку не списываем.
       const send = sse(res);
       send('meta', { mode: 'demo', access: access.status(httpReq.user) });
@@ -193,42 +203,36 @@ export function createTutor({ config, content, access, log = console }) {
     }
 
     const ping = setInterval(() => { if (!closed) res.write(': ping\n\n'); }, 15000);
+    const controller = new AbortController();
+    res.on('close', () => { if (!res.writableFinished) controller.abort(); });
     let delivered = 0;
     let answer = '';
-    let stream;
     try {
-      const params = {
-        model: config.anthropic.model,
-        max_tokens: config.anthropic.maxTokens,
-        thinking: { type: 'adaptive' },
-        output_config: { effort: parsed.action === 'hint' ? 'medium' : config.anthropic.effort },
-        system: [{ type: 'text', text: TUTOR_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        messages: buildMessages(parsed),
-      };
-      if (config.anthropic.fallbacks) {
-        params.betas = ['server-side-fallback-2026-07-01'];
-        params.fallbacks = 'default';
-      }
-      stream = ai.beta.messages.stream(params);
-      res.on('close', () => { if (!res.writableFinished) stream.abort(); });
-      stream.on('text', (delta) => {
-        delivered += delta.length;
-        answer += delta;
-        if (!closed) send('delta', { t: delta });
+      const result = await askAi({
+        parsed,
+        signal: controller.signal,
+        onText: (delta) => {
+          delivered += delta.length;
+          answer += delta;
+          if (!closed) send('delta', { t: delta });
+        },
       });
-      const final = await stream.finalMessage();
-      if (final.stop_reason === 'refusal') {
+      if (result.stop === 'refusal') {
         if (delivered === 0) access.refund(httpReq.user, grant.mode);
         if (!closed) send('refusal', { error: 'Наставник не может ответить на этот запрос. Переформулируй вопрос по учебной теме.' });
       } else if (!closed) {
-        send('done', { truncated: final.stop_reason === 'max_tokens', sig: answer.length <= MAX_ASSISTANT_MSG ? sign(answer) : null });
+        send('done', {
+          truncated: result.stop === 'max_tokens',
+          provider: result.provider,
+          sig: answer && answer.length <= MAX_ASSISTANT_MSG ? sign(answer) : null,
+        });
       }
     } catch (err) {
       // Обрыв соединения клиентом попытку не возвращает: модель уже работала и тратила токены.
       if (!closed) {
         if (delivered === 0) access.refund(httpReq.user, grant.mode);
-        log.error('[tutor] ошибка Claude API:', err?.status ?? '', err?.message ?? err);
-        const busy = err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && Number(err.status) >= 500);
+        if (err?.name !== 'AbortError') log.error('[tutor] ИИ не ответил:', err?.message ?? err);
+        const busy = err instanceof ProviderError && err.busy;
         send('error', {
           error: busy
             ? `Наставник сейчас перегружен. Попробуй через минуту${delivered === 0 ? ' — попытка не списана' : ''}.`
@@ -242,7 +246,11 @@ export function createTutor({ config, content, access, log = console }) {
     }
   }
 
-  return { handle, aiEnabled: Boolean(ai) };
+  return {
+    handle,
+    aiEnabled: providers.length > 0,
+    providers: providers.map((p) => ({ id: p.id, ...PROVIDER_INFO[p.id] })),
+  };
 }
 
 export function reasonText(reason) {

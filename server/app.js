@@ -22,7 +22,7 @@ export async function createApp(config, { fetchImpl = fetch, log = console, db: 
   const content = createContentStore(subjects);
   const auth = createAuth(db, config);
   const access = createAccess(db, config);
-  const tutor = createTutor({ config, content, access, log });
+  const tutor = createTutor({ config, content, access, fetchImpl, log });
   const payments = createPayments({ db, config, access, fetchImpl, log });
   const media = createMedia({ db, config, fetchImpl, publicTitles: collectImageTitles(subjects) });
   const limit = limiters(config.rateLimitScale);
@@ -61,6 +61,7 @@ export async function createApp(config, { fetchImpl = fetch, log = console, db: 
       trialMessages: config.plan.trialMessages,
       proDailyLimit: config.plan.proDailyLimit,
       aiEnabled: tutor.aiEnabled,
+      aiProviders: tutor.providers,
       payments: payments.mode,
     });
   });

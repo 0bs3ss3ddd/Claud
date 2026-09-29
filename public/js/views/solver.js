@@ -94,7 +94,7 @@ export async function solverView(_params, query) {
         h('div', { class: 'row' }, solveBtn, hintBtn, resetBtn),
         status,
         !store.config.aiEnabled
-          ? h('p', { class: 'notice' }, 'Решатель ещё не подключён к ИИ: администратору нужно указать ключ Claude API. Пока наставник доступен для задач из каталога.')
+          ? h('p', { class: 'notice' }, 'Решатель ещё не подключён к ИИ: администратору нужно указать ключ одного из провайдеров — Claude, YandexGPT, GigaChat или DeepSeek. Пока наставник доступен для задач из каталога.')
           : null,
       ),
       h('div', { class: 'tutor tutor--page', style: { marginTop: '24px' } }, tutor.el, followForm),

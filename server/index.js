@@ -15,6 +15,6 @@ const { app, tutor, payments } = await createApp(config);
 
 app.listen(config.port, config.host, () => {
   console.log(`${config.brand} запущена: ${config.publicUrl}`);
-  console.log(`  наставник: ${tutor.aiEnabled ? `Claude API (${config.anthropic.model})` : 'демо-режим (нет ANTHROPIC_API_KEY)'}`);
+  console.log(`  наставник: ${tutor.aiEnabled ? tutor.providers.map((p) => p.title).join(' → ') : 'демо-режим (нет ключей ИИ)'}`);
   console.log(`  оплата:    ${payments.mode === 'yookassa' ? 'ЮKassa' : payments.mode === 'demo' ? 'демо (без денег)' : 'выключена'}`);
 });

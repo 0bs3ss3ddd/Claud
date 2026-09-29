@@ -20,6 +20,12 @@ const USER_LABEL = {
   solution: () => '📘 Полное решение со всеми объяснениями',
 };
 
+/** «Наставник · GigaChat» — какой ИИ ответил. */
+function whoLabel(via) {
+  const title = (store.config.aiProviders ?? []).find((p) => p.id === via)?.title;
+  return title ? `Наставник · ${title}` : 'Наставник';
+}
+
 export function newChatScope() {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
@@ -43,7 +49,7 @@ export function createTutorSession(opts) {
     if (m.role === 'user') {
       return h('div', { class: 'msg msg--user' }, h('span', { class: 'label msg__who', text: 'Ты' }), m.label ?? m.content);
     }
-    const box = h('div', { class: `msg msg--tutor ${m.role === 'note' ? 'msg--note' : ''}` }, h('span', { class: 'label msg__who', text: m.role === 'note' ? 'Сообщение' : 'Наставник' }));
+    const box = h('div', { class: `msg msg--tutor ${m.role === 'note' ? 'msg--note' : ''}` }, h('span', { class: 'label msg__who', text: m.role === 'note' ? 'Сообщение' : whoLabel(m.via) }));
     box.append(md(m.content));
     return box;
   }
@@ -111,6 +117,7 @@ export function createTutorSession(opts) {
     let failed = null;
     let demo = false;
     let sig = null;
+    let via = null;
     const paint = () => { frame = 0; setMd(out, text, { final: false }); };
     controller = new AbortController();
     try {
@@ -118,7 +125,11 @@ export function createTutorSession(opts) {
         signal: controller.signal,
         onMeta: (meta) => { setAccess(meta.access); demo = meta.mode === 'demo'; },
         onDelta: (t) => { text += t; if (!frame) frame = requestAnimationFrame(paint); },
-        onDone: (data) => { sig = typeof data?.sig === 'string' ? data.sig : null; },
+        onDone: (data) => {
+          sig = typeof data?.sig === 'string' ? data.sig : null;
+          via = typeof data?.provider === 'string' ? data.provider : null;
+          if (via) tutorEl.querySelector('.msg__who').textContent = whoLabel(via);
+        },
         onError: (message) => { failed = message; },
       });
     } catch (err) {
@@ -155,7 +166,7 @@ export function createTutorSession(opts) {
       if (demo) {
         log.push(userMsg, { role: 'note', content: text });
       } else {
-        log.push(userMsg, { role: 'assistant', content: text, sig });
+        log.push(userMsg, { role: 'assistant', content: text, sig, via });
       }
       save();
     }

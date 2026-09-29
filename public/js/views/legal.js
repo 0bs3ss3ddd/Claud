@@ -42,6 +42,14 @@ export async function termsView() {
 [Наименование], ИНН [...], адрес [...], email [...], телефон [...].`);
 }
 
+function aiRecipients() {
+  const list = store.config.aiProviders ?? [];
+  if (!list.length) return '- ИИ-провайдеры сейчас не подключены: вопросы наставнику никуда не передаются.';
+  const lines = list.map((p) => `- ${p.operator} (${p.country}) — тексты вопросов наставнику передаются для генерации ответа моделью ${p.title}.${p.country !== 'Россия' ? ' Это трансграничная передача.' : ''}`);
+  lines.push('- Не отправляй наставнику персональные данные — имена, адреса, телефоны.');
+  return lines.join('\n');
+}
+
 export async function privacyView() {
   document.title = `Политика конфиденциальности — ${store.config.brand}`;
   return page('Политика', String.raw`## 1. Кто обрабатывает данные
@@ -59,7 +67,7 @@ export async function privacyView() {
 
 ## 4. Кому мы передаём данные
 - ООО НКО «ЮMoney» (сервис ЮKassa) — для приёма оплаты.
-- Anthropic PBC (США) — тексты вопросов наставнику передаются для генерации ответа ИИ-моделью Claude. Это трансграничная передача; не отправляй наставнику персональные данные — имена, адреса, телефоны.
+${aiRecipients()}
 - Государственным органам — только в случаях, предусмотренных законом.
 
 ## 5. Cookies

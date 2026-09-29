@@ -109,3 +109,21 @@ test('учебный контент валиден и содержит ЕГЭ + 
     assert.ok(s.olymp.rsosh.length >= 1, s.id);
   }
 });
+
+test('GigaChat: корневой сертификат добавляется к доверенным (PEM и DER)', async () => {
+  const { trustExtraCa } = await import('../server/llm/gigachat.js');
+  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const tls = await import('node:tls');
+  const dir = mkdtempSync(path.join(tmpdir(), 'parta-ca-'));
+  const pem = tls.rootCertificates[0];
+  const der = Buffer.from(pem.replace(/-----[^-]+-----|\s/g, ''), 'base64');
+  writeFileSync(path.join(dir, 'a.pem'), pem);
+  writeFileSync(path.join(dir, 'b.cer'), der);
+  const warn = [];
+  const ok = trustExtraCa(`${path.join(dir, 'a.pem')}, ${path.join(dir, 'b.cer')}`, { warn: (m) => warn.push(m) });
+  if (typeof tls.setDefaultCACertificates === 'function') assert.equal(ok, true);
+  else assert.equal(warn.length, 1);
+  assert.equal(trustExtraCa(''), false);
+});
