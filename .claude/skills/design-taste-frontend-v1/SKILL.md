@@ -54,7 +54,7 @@ LLMs have statistical biases toward specific UI cliché patterns. Proactively co
 * **Execution:** Use cards ONLY when elevation communicates hierarchy. When a shadow is used, tint it to the background hue.
 
 **Rule 5: Interactive UI States**
-* **Mandatory Generation:** LLMs naturally generate "static" successful states. You MUST implement full interaction cycles:
+* **Mandatory Generation:** Implement full interaction cycles, not just the static success state:
   * **Loading:** Skeletal loaders matching layout sizes (avoid generic circular spinners).
   * **Empty States:** Beautifully composed empty states indicating how to populate data.
   * **Error States:** Clear, inline error reporting (e.g., forms).

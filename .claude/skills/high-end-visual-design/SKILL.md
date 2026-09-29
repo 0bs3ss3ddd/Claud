@@ -19,7 +19,7 @@ If your generated code includes ANY of the following, the design instantly fails
 - **Banned Motion:** Standard `linear` or `ease-in-out` transitions. Instant state changes without interpolation.
 
 ## 3. THE CREATIVE VARIANCE ENGINE
-Before writing code, silently "roll the dice" and select ONE combination from the following archetypes based on the prompt's context to ensure the output is uniquely tailored but always premium:
+Select ONE combination from the following archetypes, suited to the prompt's context, so the output is uniquely tailored but always premium — and vary the choice across builds:
 
 ### A. Vibe & Texture Archetypes (Pick 1)
 1. **Ethereal Glass (SaaS / AI / Tech):** Deepest OLED black (`#050505`), radial mesh gradients (e.g., subtle glowing purple/emerald orbs) in the background. Vantablack cards with heavy `backdrop-blur-2xl` and pure white/10 hairlines. Wide geometric Grotesk typography.
@@ -77,7 +77,7 @@ Never use default transitions. All motion must simulate real-world mass and spri
 
 ## 7. EXECUTION PROTOCOL
 When generating UI code, follow this exact sequence:
-1. **[SILENT THOUGHT]** Roll the Variance Engine (Section 3). Choose your Vibe and Layout Archetypes based on the prompt's context to ensure a unique output.
+1. **[SELECT]** Choose your Vibe and Layout Archetypes (Section 3) to suit the prompt and to differ from recent builds.
 2. **[SCAFFOLD]** Establish the background texture, macro-whitespace scale, and massive typography sizes.
 3. **[ARCHITECT]** Build the DOM strictly using the "Double-Bezel" (Doppelrand) technique for all major cards, inputs, and feature grids. Use exaggerated squircle radii (`rounded-[2rem]`).
 4. **[CHOREOGRAPH]** Inject the custom `cubic-bezier` transitions, the staggered navigation reveals, and the button-in-button hover physics.
