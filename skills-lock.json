@@ -2095,6 +2095,12 @@
       "skillPath": "skills/fleet-hunting-with-velociraptor/SKILL.md",
       "computedHash": "249948b0bbcca64e76f7b97accecc623ca9f1171551f22c65a524ca50c14c8cd"
     },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "89496d5dd00f4810205f351759594fc2742bf8eea85a2f2b2d1de59f4bd91576"
+    },
     "full-output-enforcement": {
       "source": "Leonxlnx/taste-skill",
       "sourceType": "github",
