@@ -25,6 +25,12 @@
       "skillPath": "skills/acquiring-disk-image-with-dd-and-dcfldd/SKILL.md",
       "computedHash": "255304ceea0cd24416fd3f1f5a11bc89f0e654b3fd6ad025da5484d1bb050ce7"
     },
+    "ai-video-generation": {
+      "source": "101-skills/superpowers",
+      "sourceType": "github",
+      "skillPath": "tools/video/ai-video-generation/SKILL.md",
+      "computedHash": "8524cc49ad3dca2a4502903234061b307636e44b08496e982747cdb9590f5556"
+    },
     "analyzing-active-directory-acl-abuse": {
       "source": "mukul975/Anthropic-Cybersecurity-Skills",
       "sourceType": "github",
