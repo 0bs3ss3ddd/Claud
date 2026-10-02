@@ -2083,6 +2083,12 @@
       "skillPath": "skills/extracting-windows-event-logs-artifacts/SKILL.md",
       "computedHash": "1f28b103df2ac02ffd0777a862907966c12749418d382fb9618fd5187c901d8c"
     },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "913b9d37d0d54047dd65222bb8c67b2bf04e3cb87dcad1729068d7a8b2c8c396"
+    },
     "fleet-hunting-with-velociraptor": {
       "source": "mukul975/Anthropic-Cybersecurity-Skills",
       "sourceType": "github",
